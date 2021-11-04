@@ -1,0 +1,25 @@
+[Unit]
+Description=MongoDB Database Server
+Documentation=https://docs.mongodb.org/manual
+After=network.target
+
+[Service]
+User=ubuntu
+Group=ubuntu
+ExecStart={{ app_directory }}/apps/mongodb/bin/mongod --config {{ app_directory }}/apps/mongodb/bin/mongod.conf
+ExecStartPre=/bin/mkdir -p /var/run/mongodb
+ExecStartPre=/bin/chown {{ mongoreplica_username }}:{{ mongoreplica_username }} /var/run/mongodb
+ExecStartPre=/bin/chmod 0755 /var/run/mongodb
+PermissionsStartOnly=true
+PIDFile=/var/run/mongodb/mongod.pid
+LimitFSIZE=infinity
+LimitCPU=infinity
+LimitAS=infinity
+LimitNOFILE=64000
+LimitNPROC=64000
+LimitMEMLOCK=infinity
+TasksMax=infinity
+TasksAccounting=false
+Type=forking
+[Install]
+WantedBy=multi-user.target

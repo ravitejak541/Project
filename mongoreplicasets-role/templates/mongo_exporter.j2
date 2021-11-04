@@ -1,0 +1,13 @@
+[Unit]
+Description=MongoDB Exporter
+
+[Service]
+Type=simple
+Restart=always
+User=ubuntu
+Group=ubuntu
+Environment="MONGODB_URI=mongodb://mongodb_exporter:password@localhost:27017"
+ExecStart=/usr/local/bin/mongodb_exporter
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,10 @@
+var cfg = { _id: 'tls-rs',
+    members: [
+        { _id: 0, host: 'mongo-001:27017'},
+        { _id: 1, host: 'mongo-002:27017'},
+        { _id: 2, host: 'mongo-003:27017'}
+    ]
+};
+
+var output = rs.initiate(cfg);
+printjson(output);

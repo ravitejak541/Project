@@ -1,0 +1,4 @@
+- hosts: mongoreplicasets
+  become: true
+  roles:
+    - role: mongoreplicasets-role

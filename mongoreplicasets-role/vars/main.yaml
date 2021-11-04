@@ -1,0 +1,14 @@
+mongoreplica_username: ubuntu
+app_directory: /mnt
+mongodb_bin_path: https://fastdl.mongodb.org/linux/mongodb-linux-x86_64-ubuntu1804-4.0.26.tgz
+packages:
+  - zip
+  - libcurl4-openssl-dev
+  - python-pip
+mongodb_path_dir:
+  - {path: "{{ app_directory }}/apps", state: "directory", owner: "{{ mongoreplica_username }}", group: "{{ mongoreplica_username }}", mode: '0755'}
+  - {path: "{{ app_directory }}/src", state: "directory", owner: "{{ mongoreplica_username }}", group: "{{ mongoreplica_username }}", mode: '0755'}
+  - {path: "{{ app_directory }}/certs", state: "directory", owner: "{{ mongoreplica_username }}", group: "{{ mongoreplica_username }}", mode: '0755'}
+  - {path: "{{ app_directory }}-data/logs", state: "directory", owner: "{{ mongoreplica_username }}", group: "{{ mongoreplica_username }}", mode: '0755'}
+  - {path: "{{ app_directory }}-data/mongodata", state: "directory", owner: "{{ mongoreplica_username }}", group: "{{ mongoreplica_username }}", mode: '0755'}
+

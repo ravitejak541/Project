@@ -1,0 +1,275 @@
+- name: Install packages.
+  apt:
+    name: "{{ packages }}"
+    state: present
+    update_cache: yes
+  register: packages_status
+
+- debug:
+    msg: "{{ packages_status }}"
+  when: packages_status is defined
+
+- name: Install pymongo module
+  pip:
+    name: pymongo
+
+- name: Update /etc/hosts file
+  blockinfile:
+    path: /etc/ssh/sshd_config
+    block: |
+      groups['mongoreplicasets'][0] mongo-001
+      groups['mongoreplicasets'][1] mongo-002
+      groups['mongoreplicasets'][2] mongo-003
+
+- name: Create mongo folders.
+  file:
+    path: "{{ item.path }}"
+    state: "{{ item.state }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+    recurse: yes
+  with_items: "{{ mongodb_path_dir }}"
+  register: create_folder
+  tags: create_folder
+
+- debug:
+    msg:
+      - "{{ create_folder }}"
+  when: create_folder is defined
+
+- name: Install pymongo module
+  pip:
+    name: pymongo
+
+- name: Add mongodb Service file.
+  template:
+    src: mongod-svc.j2
+    dest: /etc/systemd/system/mongod.service
+  register: copy_sysd_file
+
+- debug:
+    msg: "Add mongodb Service file -- {{ copy_sysd_file }}"
+  when: copy_sysd_file is defined
+
+- set_fact:
+    keyname: mongo-001
+  when: inventory_hostname == groups['mongoreplicasets'][0]
+
+- set_fact:
+    keyname: mongo-002
+  when: inventory_hostname == groups['mongoreplicasets'][1]
+
+- set_fact:
+    keyname: mongo-003
+  when: inventory_hostname == groups['mongoreplicasets'][2]
+
+- name: Copy certs
+  copy:
+    src: "{{ item }}"
+    dest: "{{ app_directory }}/certs/"
+  with_items:
+    - "mongoCA.crt"
+    - "mongo-001.pem"
+    - "mongo-002.pem"
+    - "mongo-003.pem"
+    - "replicaSet"
+
+- name: Get mongodb binary to environment.
+  get_url:
+    url: "{{ mongodb_bin_path }}"
+    dest: "{{ app_directory }}/src/"
+  register: get_mongodb_bin
+
+- debug:
+    msg: "get mongodb binary to enviornment Status -- {{ get_mongodb_bin }}"
+  when: get_mongodb_bin is defined
+
+- set_fact:
+    mongodb_folder: "{{ mongodb_bin_path.split('/')[-1].split('.tgz')[0] }}"
+    mongodb_folder_rmt: "{{ app_directory }}/src/{{ mongodb_bin_path.split('/')[-1] }}"
+
+- name: create directory for storing mongodb binary.
+  file:
+    path: "{{ app_directory }}/src/{{ mongodb_folder }}"
+    owner: "{{ mongoreplica_username }}"
+    group: "{{ mongoreplica_username }}"
+    mode: '0755'
+    state: directory
+  register: create_mongodb_folder
+
+- debug:
+    msg: "create directory for storing mongodb binary -- {{ create_mongodb_folder }}"
+  when: create_mongodb_folder is defined
+
+- name: Extract mongodb binary.
+  shell:
+    cmd: "tar -xzf {{ mongodb_folder_rmt }} -C {{ mongodb_folder }} --strip-components=1"
+    chdir: "{{ app_directory }}/src/"
+  register: extract_mongodb_bin
+
+- debug:
+    msg: "Extract mongodb binary Status -- {{ extract_mongodb_bin }}"
+  when: extract_mongodb_bin is defined
+
+- name: Symbolic Link mongodb binary.
+  file:
+    src: "{{ app_directory }}/src/{{ mongodb_folder }}"
+    dest: "{{ app_directory }}/apps/mongodb"
+    state: link
+  register: symblink_mongodb_bin
+
+- name: Copy mongodb config.
+  template:
+    src: mongod.conf.temp
+    dest: "{{ app_directory }}/apps/mongodb/bin/mongod.conf"
+    owner: "{{ mongoreplica_username }}"
+    group: "{{ mongoreplica_username }}"
+    mode: '0754'
+  register: copy_mongodb_config
+
+- debug:
+    msg: "Copy mongodb config Status -- {{ copy_mongodb_config }}"
+  when: copy_mongodb_config is defined
+
+- debug:
+    msg: "Symbolic Link tomcat mongodb Status -- {{ symblink_mongodb_bin }}"
+  when: symblink_mongodb_bin is defined
+
+- name: Perform System Daemon Reload.
+  systemd:
+    daemon_reload: yes
+  register: daemon_reload
+
+- debug:
+    msg:
+      - Perform System Daemon Reload
+      - "{{ daemon_reload }}"
+  when: daemon_reload is defined
+
+- name: Start MongoDB service.
+  systemd:
+    name: mongod
+    enabled: yes
+    state: started
+  register: start_mongod_sysd
+
+- name: Create MongoDB admin user
+  mongodb_user:
+    login_port: "27017"
+    database: "admin"
+    name: admin
+    password: password
+    roles: root
+
+- name: Copy mongodb config.
+  template:
+    src: mongod.conf
+    dest: "{{ app_directory }}/apps/mongodb/bin/"
+    owner: "{{ mongoreplica_username }}"
+    group: "{{ mongoreplica_username }}"
+    mode: '0754'
+  register: copy_mongodb_config
+
+- debug:
+    msg: "Copy mongodb config Status -- {{ copy_mongodb_config }}"
+  when: copy_mongodb_config is defined
+
+- name: Perform System Daemon Reload.
+  systemd:
+    daemon_reload: yes
+  register: daemon_reload
+
+- debug:
+    msg:
+      - Perform System Daemon Reload
+      - "{{ daemon_reload }}"
+  when: daemon_reload is defined
+
+- name: Start MongoDB service.
+  systemd:
+    name: mongod
+    enabled: yes
+    state: restarted
+  register: start_mongod_sysd
+
+- debug:
+    msg:
+      - Start MongoDB service
+      - "{{ start_mongod_sysd }}"
+  when: start_mongod_sysd is defined
+
+- name: start rs
+  community.mongodb.mongodb_shell:
+    login_user: admin
+    login_password: password
+    login_database: admin
+    file: "{{ app_directory }}/certs/replicaSet"
+    idempotent: yes
+  when: inventory_hostname == groups['mongoreplicasets'][0]
+  environment:
+    PATH: "{{ ansible_env.PATH }}:/mnt/apps/mongodb/bin/"
+
+- name: Change mongo admin folder ownership.
+  shell: "sudo chown -R {{ mongoreplica_username }}:{{ mongoreplica_username }} {{ app_directory }}"
+  register: reset_ownership
+  become: true
+  become_user: "{{ mongoreplica_username }}"
+
+- debug:
+    msg:
+      - Change mongo admin folder ownership status
+      - "{{ reset_ownership }}"
+  when: reset_ownership is defined
+
+- name: Create MongoDB admin user siteRootAdmin
+  mongodb_user:
+    login_user: admin
+    login_password: password
+    login_port: "27017"
+    database: "admin"
+    name: mongodb_exporter
+    password: password
+    roles: clusterMonitor
+  tags: test
+
+- name: Download binaries
+  get_url:
+    url: https://github.com/percona/mongodb_exporter/releases/download/v0.20.7/mongodb_exporter-0.20.7.linux-amd64.tar.gz
+    dest: /tmp/
+  register: bin_files
+
+
+- name: UNZIPPING the files
+  unarchive:
+    src: /tmp/mongodb_exporter-0.20.7.linux-amd64.tar.gz
+    dest: /tmp/
+    copy: no
+
+
+- name: Copy Mongo exporter Lib
+  copy:
+    src: /tmp/mongodb_exporter-0.20.7.linux-amd64/mongodb_exporter
+    dest: /usr/local/bin/mongodb_exporter
+    remote_src: yes
+    mode: '0755'
+
+
+- name: Add mongodb exporter Service file.
+  template:
+    src: mongo_exporter.j2
+    dest: /etc/systemd/system/mongo_exporter.service
+  register: copy_sysd_file
+
+
+- debug:
+    msg: "Add mongodb exporter Service file -- {{ copy_sysd_file }}"
+  when: copy_sysd_file is defined
+
+- name: Start MongoDB service.
+  systemd:
+    name: mongo_exporter
+    enabled: yes
+    state: restarted
+  register: start_mongod_sysd
+
